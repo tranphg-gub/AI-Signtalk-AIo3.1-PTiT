@@ -1,0 +1,27 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ===== Node.js =====
+node_modules/
+npm-debug.log*
+
+# ===== Build =====
+web-ui/dist/
+
+# ===== Model & Dataset (LỚNNNN - dùng Git LFS) =====
+# ai_core/model/*.keras
+# ai_core/dataset/
+
+# ===== IDE =====
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
