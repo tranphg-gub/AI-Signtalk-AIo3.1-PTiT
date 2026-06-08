@@ -25,3 +25,4 @@ web-ui/dist/
 *.swp
 .DS_Store
 Thumbs.db
+presentation.html
