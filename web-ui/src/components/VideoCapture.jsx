@@ -15,6 +15,7 @@ function VideoCapture({ mode = 'predict' }) {
   const frameBufferRef = useRef([]);
   const isRecordingRef = useRef(false);
   const modeRef = useRef(mode);
+  const predictCounterRef = useRef(0);
 
   const [isLoading, setIsLoading] = useState(true);
   const [loadingMsg, setLoadingMsg] = useState('Đang tải MediaPipe AI...');
@@ -161,28 +162,66 @@ function VideoCapture({ mode = 'predict' }) {
     }
     ctx.restore();
 
+    // Kiểm tra Vùng hoạt động (Active Zone)
+    let isActiveZone = false;
+    if (detected) {
+      for (const hand of results.multiHandLandmarks) {
+        // Điểm 0 (cổ tay) hoặc 9 (khớp ngón giữa). y < 0.85 nghĩa là trên vùng bụng
+        if (hand[0].y < 0.85) {
+          isActiveZone = true;
+          break; // Chỉ cần ít nhất 1 tay nằm trong vùng hoạt động
+        }
+      }
+    }
+
     // Thu thập frames khi đang ghi
     if (isRecordingRef.current) {
-      if (detected) {
+      if (detected && isActiveZone) {
         const landmarks = extractLandmarks(results);
         frameBufferRef.current.push(landmarks);
-        setFrameCount(frameBufferRef.current.length);
 
-        if (frameBufferRef.current.length >= 30) {
-          const framesToSend = frameBufferRef.current.slice(0, 30);
+        if (modeRef.current === 'predict') {
+          // SLIDING WINDOW CHO PREDICT
+          if (frameBufferRef.current.length > 30) {
+            frameBufferRef.current.shift(); // Xóa frame cũ nhất, giữ tối đa 30
+          }
+          setFrameCount(frameBufferRef.current.length);
 
-          if (modeRef.current === 'predict') {
-            socketService.sendFramesForPrediction(framesToSend);
-            setStatus('⚡ Đang dự đoán...');
-          } else if (modeRef.current === 'collect') {
+          if (frameBufferRef.current.length === 30) {
+            predictCounterRef.current++;
+            // Cứ mỗi 10 frame (~0.33s) đẩy mảng 30 frame lên một lần
+            if (predictCounterRef.current >= 10) {
+              socketService.sendFramesForPrediction([...frameBufferRef.current]);
+              setStatus('⚡ Đang nhận diện...');
+              predictCounterRef.current = 0;
+            }
+          }
+        } else if (modeRef.current === 'collect') {
+          // CHUNKING CHO COLLECT (giữ nguyên để tránh lỗi train)
+          setFrameCount(frameBufferRef.current.length);
+          if (frameBufferRef.current.length >= 30) {
+            const framesToSend = frameBufferRef.current.slice(0, 30);
             window.dispatchEvent(new CustomEvent('frames-ready', { detail: framesToSend }));
             setStatus('📸 Đã ghi mẫu! Tiếp tục...');
+            frameBufferRef.current = [];
+            setFrameCount(0);
           }
-          frameBufferRef.current = [];
-          setFrameCount(0);
         }
       } else {
-        setStatus('👋 Đưa tay vào khung hình...');
+        if (!detected) {
+          setStatus('👋 Đưa tay vào khung hình...');
+        } else {
+          setStatus('💤 Trạng thái nghỉ (nâng tay lên để tiếp tục)');
+        }
+        
+        // Khi buông tay thì làm sạch buffer predict để bắt đầu từ mới
+        if (modeRef.current === 'predict') {
+          if (frameBufferRef.current.length > 0) {
+             frameBufferRef.current = [];
+             setFrameCount(0);
+             predictCounterRef.current = 0;
+          }
+        }
       }
     }
   };
@@ -192,6 +231,7 @@ function VideoCapture({ mode = 'predict' }) {
     setIsRecording(true);
     frameBufferRef.current = [];
     setFrameCount(0);
+    predictCounterRef.current = 0;
     setStatus('👋 Đưa tay vào khung hình...');
   };
 
@@ -200,6 +240,7 @@ function VideoCapture({ mode = 'predict' }) {
     setIsRecording(false);
     frameBufferRef.current = [];
     setFrameCount(0);
+    predictCounterRef.current = 0;
     setStatus('Đã tạm dừng');
   };
 

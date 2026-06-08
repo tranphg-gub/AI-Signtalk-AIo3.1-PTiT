@@ -77,3 +77,12 @@ Xem trong Antigravity IDE (đã tạo tự động):
 - Phân tích lỗi & hướng dẫn training
 - Mẫu báo cáo đồ án đại học
 - Hướng dẫn thuyết trình PowerPoint
+
+---
+
+## 🛡️ Thuật Toán Chống Nhiễu AI (Mới)
+Hệ thống v2.0 đã được nâng cấp cơ chế nhận diện liên tục chống nhiễu:
+1. **Active Zone (Vùng hoạt động):** Tự động bỏ qua khung hình khi người dùng buông thõng 2 tay.
+2. **Sliding Window:** Đẩy dữ liệu liên tục 10 frame / lần thay vì chờ gom đủ 30 frame, giúp nhận diện mượt mà và không bị rớt khung hình.
+3. **Consecutive Frames:** Chỉ công nhận kết quả khi mô hình dự đoán giống nhau trong 3 lần liên tiếp, loại bỏ triệt để hiện tượng "chớp nháy" ký hiệu rác.
+4. **Debounce / Cooldown:** Sau khi nhận diện một từ, hệ thống bỏ qua các thay đổi trong 1.5 giây để chờ người dùng rút tay về.

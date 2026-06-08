@@ -25,6 +25,9 @@ function TranslationDisplay() {
   const isSpeakingRef = useRef(false);
   const translateTimeoutRef = useRef(null);
   const historyRef = useRef(null);
+  const consecutiveCountRef = useRef(0);
+  const lastGestureRef = useRef('');
+  const cooldownEndRef = useRef(0);
 
   useEffect(() => {
     const handlePredictResult = (data) => {
@@ -36,44 +39,79 @@ function TranslationDisplay() {
       setCurrentLatency(latency || 0);
       setAllScores(all_scores || null);
 
-      const isValidGesture = gesture && gesture !== 'TRẠNG THÁI NGHỈ' && gesture !== 'Không rõ' && confidence > 0.75;
+      const isValidGesture = gesture && gesture !== 'Không rõ' && confidence > 0.75;
 
       if (isValidGesture) {
         const timeString = new Date().toLocaleTimeString('vi-VN', {
           hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
         });
 
+        // Luôn lưu vào lịch sử để hiển thị debug trên UI (kể cả trạng thái nghỉ)
         setHistory(prev => {
           const newItem = { gesture, confPercent, time: timeString, latency: latency || 0 };
           return [newItem, ...prev].slice(0, 15);
         });
 
-        setRecognizedWords(prev => {
-          // Chỉ thêm nếu từ vừa nhận không giống từ cuối cùng (tránh lặp)
-          if (prev.length === 0 || prev[prev.length - 1] !== gesture) {
-            // Text-to-Speech cho từ vừa nhận diện
-            if (!isSpeakingRef.current && window.speechSynthesis) {
-              const utterance = new SpeechSynthesisUtterance(gesture);
-              utterance.lang = 'vi-VN';
-              utterance.rate = 0.9;
-              utterance.onstart = () => {
-                isSpeakingRef.current = true;
-                setIsSpeaking(true);
-              };
-              utterance.onend = () => {
-                isSpeakingRef.current = false;
-                setIsSpeaking(false);
-              };
-              utterance.onerror = () => {
-                isSpeakingRef.current = false;
-                setIsSpeaking(false);
-              };
-              window.speechSynthesis.speak(utterance);
+        const now = Date.now();
+        
+        // 1. Kiểm tra Cooldown: Đang trong thời gian nghỉ thì bỏ qua việc thêm từ
+        if (now < cooldownEndRef.current) {
+           return;
+        }
+
+        // Nếu là TRẠNG THÁI NGHỈ, ta reset chuỗi liên tiếp và không thêm vào danh sách từ
+        if (gesture === 'TRẠNG THÁI NGHỈ') {
+           consecutiveCountRef.current = 0;
+           lastGestureRef.current = '';
+           return;
+        }
+
+        // 2. Logic Cửa Sổ Liên Tiếp (Consecutive Frames)
+        if (gesture === lastGestureRef.current) {
+           consecutiveCountRef.current += 1;
+        } else {
+           lastGestureRef.current = gesture;
+           consecutiveCountRef.current = 1;
+        }
+
+        // Cần nhận diện giống nhau liên tiếp 3 lần (do tốc độ gửi rất nhanh)
+        if (consecutiveCountRef.current >= 3) {
+          setRecognizedWords(prev => {
+            // Chỉ thêm nếu từ vừa nhận không giống từ cuối cùng (tránh lặp)
+            if (prev.length === 0 || prev[prev.length - 1] !== gesture) {
+              // Text-to-Speech cho từ vừa nhận diện
+              if (!isSpeakingRef.current && window.speechSynthesis) {
+                const utterance = new SpeechSynthesisUtterance(gesture);
+                utterance.lang = 'vi-VN';
+                utterance.rate = 0.9;
+                utterance.onstart = () => {
+                  isSpeakingRef.current = true;
+                  setIsSpeaking(true);
+                };
+                utterance.onend = () => {
+                  isSpeakingRef.current = false;
+                  setIsSpeaking(false);
+                };
+                utterance.onerror = () => {
+                  isSpeakingRef.current = false;
+                  setIsSpeaking(false);
+                };
+                window.speechSynthesis.speak(utterance);
+              }
+              
+              // Đặt Cooldown (ví dụ 1.5 giây lờ đi mọi ký hiệu để cho phép người dùng thu tay)
+              cooldownEndRef.current = Date.now() + 1500;
+              consecutiveCountRef.current = 0;
+
+              return [...prev, gesture];
             }
-            return [...prev, gesture];
-          }
-          return prev;
-        });
+            return prev;
+          });
+        }
+      } else {
+        // Reset nếu không hợp lệ hoặc confidence quá thấp
+        consecutiveCountRef.current = 0;
+        lastGestureRef.current = '';
       }
     };
 
